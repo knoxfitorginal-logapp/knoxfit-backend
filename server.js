@@ -6,30 +6,36 @@ const { google } = require('googleapis');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
-const PORT = process.env.PORT || 3000;
-
-const CREDENTIALS_PATH = 'client_secret.json';
-const TOKEN_PATH = 'token.json';
-
-let oAuth2Client;
-
-// Load credentials and token
-function authorizeWithSavedToken() {
-  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
-  const { client_secret, client_id, redirect_uris } = credentials.installed;
-  oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-  const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
-  oAuth2Client.setCredentials(token);
-}
-
-authorizeWithSavedToken(); // ✅ Skip prompt and just load saved token
+const PORT = process.env.PORT || 10000;
 
 app.use(express.static('public'));
 
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// OAuth setup
+const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
+const { client_secret, client_id, redirect_uris } = credentials.installed;
+
+const oAuth2Client = new google.auth.OAuth2(
+  client_id,
+  client_secret,
+  redirect_uris[0]
+);
+
+let token;
+try {
+  token = JSON.parse(fs.readFileSync('token.json'));
+  oAuth2Client.setCredentials(token);
+} catch (err) {
+  console.error('❌ No token.json found or invalid token. Uploads will not work.');
+}
+
+// Upload route
 app.post('/upload', upload.single('file'), async (req, res) => {
-  if (!oAuth2Client) {
-    return res.status(500).send('OAuth client not initialized');
+  if (!oAuth2Client.credentials) {
+    return res.status(401).send('Google Drive authorization is not set up.');
   }
 
   const drive = google.drive({ version: 'v3', auth: oAuth2Client });
@@ -49,7 +55,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       fields: 'id, name'
     });
 
-    fs.unlinkSync(filePath); // Delete uploaded file after sending
+    fs.unlinkSync(filePath); // Delete uploaded file
     res.send(`✅ Uploaded: ${response.data.name}`);
   } catch (err) {
     console.error(err);

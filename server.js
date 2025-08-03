@@ -1,127 +1,69 @@
-const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { google } = require('googleapis');
+const express = require('express');
 const multer = require('multer');
-const bodyParser = require('body-parser');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// === 1. Serve HTML files ===
 app.use(express.static('public'));
+
+const oauth2Client = new google.auth.OAuth2(
+  process.env.CLIENT_ID,
+  process.env.CLIENT_SECRET,
+  process.env.REDIRECT_URI
+);
+
+oauth2Client.setCredentials({
+  refresh_token: process.env.REFRESH_TOKEN,
+});
+
+const drive = google.drive({
+  version: 'v3',
+  auth: oauth2Client,
+});
+
+// Multer storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    cb(null, `${timestamp}_${file.originalname}`);
+  },
+});
+const upload = multer({ storage });
+
+// Serve index.html at root
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// === 2. Setup multer for file uploads ===
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads');
-  },
-  filename: function (req, file, cb) {
-    const timestamp = Date.now();
-    cb(null, `${timestamp}-${file.originalname}`);
-  }
-});
-const upload = multer({ storage });
+// Upload route
+app.post('/upload', upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).send('No file uploaded.');
 
-// === 3. Google Drive OAuth2 Setup ===
-const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
-const { client_secret, client_id, redirect_uris } = credentials.installed;
-const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-const TOKEN_PATH = 'token.json';
-oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH)));
-const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-// === 4. Upload Route ===
-app.post('/upload', upload.single('file'), async (req, res) => {
-  const filePath = req.file.path;
+  const filePath = path.join(__dirname, 'uploads', req.file.filename);
   const fileMetadata = {
     name: req.file.filename,
-    parents: ['YOUR_DRIVE_FOLDER_ID'] // Replace with actual folder ID
+    parents: ['1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb'], // ✅ Your folder ID
   };
   const media = {
     mimeType: req.file.mimetype,
-    body: fs.createReadStream(filePath)
+    body: fs.createReadStream(filePath),
   };
 
   try {
     await drive.files.create({
       resource: fileMetadata,
-      media: media,
-      fields: 'id'
+      media,
+      fields: 'id',
     });
-    res.send(`✅ Uploaded: ${req.file.originalname}`);
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).send('❌ Failed to upload file');
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
-});
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const { google } = require('googleapis');
-const multer = require('multer');
-const bodyParser = require('body-parser');
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-// === 1. Serve HTML files ===
-app.use(express.static('public'));
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// === 2. Setup multer for file uploads ===
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads');
-  },
-  filename: function (req, file, cb) {
-    const timestamp = Date.now();
-    cb(null, `${timestamp}-${file.originalname}`);
-  }
-});
-const upload = multer({ storage });
-
-// === 3. Google Drive OAuth2 Setup ===
-const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
-const { client_secret, client_id, redirect_uris } = credentials.installed;
-const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-const TOKEN_PATH = 'token.json';
-oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH)));
-const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-// === 4. Upload Route ===
-app.post('/upload', upload.single('file'), async (req, res) => {
-  const filePath = req.file.path;
-  const fileMetadata = {
-    name: req.file.filename,
-    parents: ['YOUR_DRIVE_FOLDER_ID'] // Replace with actual folder ID
-  };
-  const media = {
-    mimeType: req.file.mimetype,
-    body: fs.createReadStream(filePath)
-  };
-
-  try {
-    await drive.files.create({
-      resource: fileMetadata,
-      media: media,
-      fields: 'id'
-    });
-    res.send(`✅ Uploaded: ${req.file.originalname}`);
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).send('❌ Failed to upload file');
+    fs.unlinkSync(filePath); // optional: delete after upload
+    res.send(`✅ Uploaded: ${req.file.filename}`);
+  } catch (err) {
+    console.error('Upload error:', err.message);
+    res.status(500).send('❌ Upload failed');
   }
 });
 

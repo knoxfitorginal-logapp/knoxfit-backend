@@ -1,80 +1,73 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const multer = require('multer');
-const fs = require('fs');
 const { google } = require('googleapis');
-const path = require('path');
 const app = express();
-const PORT = process.env.PORT || 10000;
 
-// Load client secrets from environment variable (Render safe)
-const CREDENTIALS = JSON.parse(fs.readFileSync('client_secret.json'));
-const TOKEN = JSON.parse(fs.readFileSync('token.json'));
+// Load OAuth2 credentials
+const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
+const { client_secret, client_id, redirect_uris } = credentials.web;
 
-// Set up OAuth2 client
-const { client_secret, client_id, redirect_uris } = CREDENTIALS.installed;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-oAuth2Client.setCredentials(TOKEN);
 
-// Set up Google Drive API
+// Load token from file
+const tokenPath = path.join(__dirname, 'token.json');
+if (fs.existsSync(tokenPath)) {
+  const token = JSON.parse(fs.readFileSync(tokenPath));
+  oAuth2Client.setCredentials(token);
+} else {
+  console.error('❌ token.json not found. Authorize locally and upload the token file.');
+  process.exit(1);
+}
+
 const drive = google.drive({ version: 'v3', auth: oAuth2Client });
 
-// Set up storage and multer
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: function (req, file, cb) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    cb(null, `${timestamp}_${file.originalname}`);
-  }
-});
-const upload = multer({ storage });
-
-// Serve static files from /public
+// Serve static files from public/
 app.use(express.static('public'));
 
-// ✅ Route: Serve index.html at root
-app.get('/', (req, res) => {
+// Multer setup for file uploads
+const upload = multer({ dest: 'uploads/' });
+
+// Upload endpoint
+app.post('/upload', upload.single('image'), async (req, res) => {
+  const filePath = req.file.path;
+  const fileName = `${Date.now()}_${req.file.originalname}`;
+  const folderId = '1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb';
+
+  try {
+    const fileMetadata = {
+      name: fileName,
+      parents: [folderId], // Upload into your Drive folder
+    };
+
+    const media = {
+      mimeType: req.file.mimetype,
+      body: fs.createReadStream(filePath),
+    };
+
+    const response = await drive.files.create({
+      resource: fileMetadata,
+      media,
+      fields: 'id',
+    });
+
+    fs.unlinkSync(filePath); // delete local file after upload
+    res.send(`✅ Uploaded: ${fileName}`);
+  } catch (err) {
+    console.error('❌ Upload failed:', err);
+    res.status(500).send('❌ Upload failed');
+  }
+});
+
+// Fallback route
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ✅ Route: Handle file upload
-app.post('/upload', upload.single('file'), async (req, res) => {
-  try {
-    const filePath = req.file.path;
-    const email = req.body.email;
-
-    const response = await drive.files.create({
-      requestBody: {
-        name: req.file.filename,
-        parents: ['1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb'] // Replace with your folder ID
-      },
-      media: {
-        mimeType: req.file.mimetype,
-        body: fs.createReadStream(filePath)
-      }
-    });
-
-    // Get public URL (optional)
-    await drive.permissions.create({
-      fileId: response.data.id,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone'
-      }
-    });
-
-    const fileUrl = `https://drive.google.com/uc?id=${response.data.id}`;
-
-    res.json({ success: true, filename: req.file.filename, fileUrl });
-
-    // Optional: delete local file
-    fs.unlinkSync(filePath);
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ success: false, error: 'Upload failed' });
-  }
-});
-
-// ✅ Start server
+// Use dynamic port for Render or fallback to 3000 locally
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
 });
+

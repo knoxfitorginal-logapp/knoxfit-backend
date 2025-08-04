@@ -3,71 +3,100 @@ const path = require('path');
 const express = require('express');
 const multer = require('multer');
 const { google } = require('googleapis');
+
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-// Load OAuth2 credentials
-const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
-const { client_secret, client_id, redirect_uris } = credentials.web;
+// Serve static files (index.html, etc.)
+app.use(express.static(path.join(__dirname, 'public')));
 
-const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-// Load token from file
-const tokenPath = path.join(__dirname, 'token.json');
-if (fs.existsSync(tokenPath)) {
-  const token = JSON.parse(fs.readFileSync(tokenPath));
-  oAuth2Client.setCredentials(token);
-} else {
-  console.error('❌ token.json not found. Authorize locally and upload the token file.');
-  process.exit(1);
-}
-
-const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-
-// Serve static files from public/
-app.use(express.static('public'));
-
-// Multer setup for file uploads
+// Setup multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Upload endpoint
-app.post('/upload', upload.single('image'), async (req, res) => {
-  const filePath = req.file.path;
-  const fileName = `${Date.now()}_${req.file.originalname}`;
-  const folderId = '1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb';
+// Google Drive API setup
+const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const TOKEN_PATH = 'token.json';
+const CREDENTIALS_PATH = 'client_secret.json';
+const DRIVE_FOLDER_ID = '1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb';
 
-  try {
+// Authorize Google Drive
+function authorize() {
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
+    const { client_secret, client_id, redirect_uris } = credentials.installed;
+
+    const oAuth2Client = new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        redirect_uris[0]
+    );
+
+    const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
+    oAuth2Client.setCredentials(token);
+
+    return oAuth2Client;
+}
+
+// Upload a file to Google Drive
+async function uploadFile(auth, filePath, fileName, mimeType) {
+    const drive = google.drive({ version: 'v3', auth });
     const fileMetadata = {
-      name: fileName,
-      parents: [folderId], // Upload into your Drive folder
+        name: fileName,
+        parents: [DRIVE_FOLDER_ID],
     };
-
     const media = {
-      mimeType: req.file.mimetype,
-      body: fs.createReadStream(filePath),
+        mimeType: mimeType,
+        body: fs.createReadStream(filePath),
     };
-
-    const response = await drive.files.create({
-      resource: fileMetadata,
-      media,
-      fields: 'id',
+    const file = await drive.files.create({
+        resource: fileMetadata,
+        media: media,
+        fields: 'id',
     });
+    return file.data.id;
+}
 
-    fs.unlinkSync(filePath); // delete local file after upload
-    res.send(`✅ Uploaded: ${fileName}`);
-  } catch (err) {
-    console.error('❌ Upload failed:', err);
-    res.status(500).send('❌ Upload failed');
-  }
+// Upload route
+app.post('/upload', upload.single('image'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const auth = authorize();
+    const filePath = req.file.path;
+    const fileName = `${Date.now()}_${req.file.originalname}`;
+    const mimeType = req.file.mimetype;
+
+    try {
+        await uploadFile(auth, filePath, fileName, mimeType);
+        fs.unlinkSync(filePath); // Delete local copy
+        res.json({ success: true, message: 'File uploaded successfully to Google Drive' });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({ success: false, error: 'Failed to upload file' });
+    }
 });
 
-// Fallback route
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// API to list files
+app.get('/api/files', async (req, res) => {
+    try {
+        const auth = authorize();
+        const drive = google.drive({ version: 'v3', auth });
+
+        const response = await drive.files.list({
+            q: `'${DRIVE_FOLDER_ID}' in parents and trashed=false`,
+            fields: 'files(id, name, createdTime, size)',
+            orderBy: 'createdTime desc',
+            pageSize: 20,
+        });
+
+        res.json({ success: true, files: response.data.files });
+    } catch (error) {
+        console.error('Error listing files:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch file list' });
+    }
 });
 
-// Use dynamic port for Render or fallback to 3000 locally
-const PORT = process.env.PORT || 3000;
+// Start the server
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+    console.log(`✅ Server running at http://localhost:${PORT}`);
 });
-

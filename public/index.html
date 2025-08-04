@@ -1,93 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>KN0X-FIT Upload</title>
+  <meta charset="UTF-8">
+  <title>KnoxFit - Upload Form</title>
   <style>
     body {
-      font-family: sans-serif;
-      padding: 30px;
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      background: #f2f2f2;
+    }
+    .container {
       max-width: 500px;
       margin: auto;
-      background-color: #f7f7f7;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
     }
-    h1 {
+    h2 {
       text-align: center;
-      color: #222;
+      margin-bottom: 30px;
     }
-    form {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-    label {
-      font-weight: bold;
-    }
-    input[type="email"],
     input[type="file"] {
-      padding: 8px;
+      width: 100%;
+      margin-bottom: 20px;
     }
     button {
-      padding: 10px;
-      background: #000;
-      color: #fff;
+      width: 100%;
+      padding: 12px;
+      background-color: #007BFF;
+      color: white;
       border: none;
+      font-size: 16px;
+      border-radius: 5px;
       cursor: pointer;
     }
-    button:hover {
-      background: #333;
-    }
-    .success {
-      margin-top: 15px;
-      color: green;
-      font-weight: bold;
-    }
-    .preview {
+    .message {
       margin-top: 20px;
-    }
-    .preview img {
-      max-width: 100%;
-      height: auto;
-      border: 1px solid #ccc;
+      text-align: center;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h1>Upload Diet / Workout</h1>
-  <form id="uploadForm" enctype="multipart/form-data">
-    <label>Email:</label>
-    <input type="email" name="email" required />
-
-    <label>Select Image (Meal or Workout):</label>
-    <input type="file" name="file" accept="image/*" required />
-
-    <button type="submit">Upload</button>
-    <div class="success" id="successMessage"></div>
-  </form>
-
-  <div class="preview" id="imagePreview"></div>
+  <div class="container">
+    <h2>Upload Your Meal / Workout</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" name="image" required />
+      <button type="submit">Upload</button>
+    </form>
+    <div class="message" id="message"></div>
+  </div>
 
   <script>
     const form = document.getElementById('uploadForm');
-    const successMessage = document.getElementById('successMessage');
-    const imagePreview = document.getElementById('imagePreview');
+    const message = document.getElementById('message');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      message.textContent = 'Uploading...';
 
       const formData = new FormData(form);
-      const res = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      });
 
-      const data = await res.json();
-      if (data.success) {
-        successMessage.textContent = `✅ Uploaded: ${data.filename}`;
-        imagePreview.innerHTML = `<img src="${data.fileUrl}" alt="Uploaded Image" />`;
-      } else {
-        successMessage.textContent = '❌ Upload failed.';
+      try {
+        const response = await fetch('https://knoxfit-backend-2.vercel.app/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          message.textContent = '✅ Uploaded successfully!';
+        } else {
+          message.textContent = '❌ Upload failed: ' + result.message;
+        }
+      } catch (error) {
+        message.textContent = '❌ Error uploading: ' + error.message;
       }
     });
   </script>

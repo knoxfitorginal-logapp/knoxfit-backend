@@ -5,98 +5,55 @@ const multer = require('multer');
 const { google } = require('googleapis');
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const port = process.env.PORT || 10000;
 
-// Serve static files (index.html, etc.)
+// Serve the HTML form from the public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Setup multer for file uploads
+// Configure multer for file upload
 const upload = multer({ dest: 'uploads/' });
 
-// Google Drive API setup
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
-const TOKEN_PATH = 'token.json';
-const CREDENTIALS_PATH = 'client_secret.json';
-const DRIVE_FOLDER_ID = '1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb';
+// Load Google API credentials
+const credentials = JSON.parse(fs.readFileSync('client_secret.json'));
+const token = JSON.parse(fs.readFileSync('token.json'));
 
-// Authorize Google Drive
-function authorize() {
-    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
-    const { client_secret, client_id, redirect_uris } = credentials.installed;
+const oAuth2Client = new google.auth.OAuth2(
+  credentials.installed.client_id,
+  credentials.installed.client_secret,
+  credentials.installed.redirect_uris[0]
+);
 
-    const oAuth2Client = new google.auth.OAuth2(
-        client_id,
-        client_secret,
-        redirect_uris[0]
-    );
+oAuth2Client.setCredentials(token);
+const drive = google.drive({ version: 'v3', auth: oAuth2Client });
 
-    const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
-    oAuth2Client.setCredentials(token);
-
-    return oAuth2Client;
-}
-
-// Upload a file to Google Drive
-async function uploadFile(auth, filePath, fileName, mimeType) {
-    const drive = google.drive({ version: 'v3', auth });
+// Upload endpoint
+app.post('/upload', upload.single('file'), async (req, res) => {
+  try {
     const fileMetadata = {
-        name: fileName,
-        parents: [DRIVE_FOLDER_ID],
+      name: `${Date.now()}_${req.file.originalname}`,
+      parents: ['1A21vhVYhDswFUTK0_oX3VO1vdA5TtUsb'], // Your Drive folder ID
     };
+
     const media = {
-        mimeType: mimeType,
-        body: fs.createReadStream(filePath),
+      mimeType: req.file.mimetype,
+      body: fs.createReadStream(req.file.path),
     };
+
     const file = await drive.files.create({
-        resource: fileMetadata,
-        media: media,
-        fields: 'id',
+      resource: fileMetadata,
+      media: media,
+      fields: 'id',
     });
-    return file.data.id;
-}
 
-// Upload route
-app.post('/upload', upload.single('image'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ success: false, error: 'No file uploaded' });
-    }
-
-    const auth = authorize();
-    const filePath = req.file.path;
-    const fileName = `${Date.now()}_${req.file.originalname}`;
-    const mimeType = req.file.mimetype;
-
-    try {
-        await uploadFile(auth, filePath, fileName, mimeType);
-        fs.unlinkSync(filePath); // Delete local copy
-        res.json({ success: true, message: 'File uploaded successfully to Google Drive' });
-    } catch (error) {
-        console.error('Upload error:', error);
-        res.status(500).json({ success: false, error: 'Failed to upload file' });
-    }
+    fs.unlinkSync(req.file.path); // delete temp file
+    res.send(`<p>✅ Uploaded successfully!</p><a href="/">Go Back</a>`);
+  } catch (err) {
+    console.error('❌ Upload Error:', err.message);
+    res.status(500).send('❌ Upload failed.');
+  }
 });
 
-// API to list files
-app.get('/api/files', async (req, res) => {
-    try {
-        const auth = authorize();
-        const drive = google.drive({ version: 'v3', auth });
-
-        const response = await drive.files.list({
-            q: `'${DRIVE_FOLDER_ID}' in parents and trashed=false`,
-            fields: 'files(id, name, createdTime, size)',
-            orderBy: 'createdTime desc',
-            pageSize: 20,
-        });
-
-        res.json({ success: true, files: response.data.files });
-    } catch (error) {
-        console.error('Error listing files:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch file list' });
-    }
-});
-
-// Start the server
-app.listen(PORT, () => {
-    console.log(`✅ Server running at http://localhost:${PORT}`);
+// Start server
+app.listen(port, () => {
+  console.log(`✅ Server running at http://localhost:${port}`);
 });

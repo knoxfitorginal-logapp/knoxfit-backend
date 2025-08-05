@@ -1,19 +1,14 @@
 {
-  "name": "knoxfit_backend_upload_final",
+  "name": "knoxfit-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "KN0X-FIT Google Drive uploader backend",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "dev": "vercel dev",
+    "start": "vercel dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "express": "^5.1.0",
-    "googleapis": "^154.1.0",
-    "multer": "^2.0.2",
-    "open": "^10.2.0"
+    "formidable": "^2.1.1",
+    "googleapis": "^130.0.0"
   }
 }

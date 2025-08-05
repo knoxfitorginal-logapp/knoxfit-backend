@@ -1,0 +1,14 @@
+{
+  "name": "knoxfit-backend",
+  "version": "1.0.0",
+  "description": "KN0X-FIT Google Drive uploader backend",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "formidable": "^2.1.1",
+    "googleapis": "^130.0.0"
+  }
+}

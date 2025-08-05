@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>KN0X-FIT Upload</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 30px;
+      max-width: 500px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+
+    form {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+
+    input[type="email"],
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px;
+      width: 100%;
+      background-color: #28a745;
+      border: none;
+      color: white;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .preview {
+      margin-top: 15px;
+    }
+
+    .preview img {
+      max-width: 100%;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>KN0X-FIT Client Upload</h1>
+
+  <form id="uploadForm">
+    <label for="email">Client Email:</label>
+    <input type="email" id="email" name="email" required placeholder="you@example.com">
+
+    <label for="diet">Upload Diet Image:</label>
+    <input type="file" id="diet" name="diet" accept="image/*" required>
+
+    <label for="workout">Upload Workout Image:</label>
+    <input type="file" id="workout" name="workout" accept="image/*" required>
+
+    <button type="submit">📤 Upload</button>
+  </form>
+
+  <div id="status"></div>
+  <div class="preview" id="preview"></div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const statusDiv = document.getElementById('status');
+    const previewDiv = document.getElementById('preview');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('email').value;
+      const dietFile = document.getElementById('diet').files[0];
+      const workoutFile = document.getElementById('workout').files[0];
+
+      if (!email || !dietFile || !workoutFile) {
+        statusDiv.textContent = "❗ Please fill all fields.";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('diet', dietFile);
+      formData.append('workout', workoutFile);
+
+      statusDiv.textContent = "⏳ Uploading...";
+
+      try {
+        const response = await fetch('https://knoxfit-backend-2.vercel.app/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          statusDiv.innerHTML = `✅ Upload successful!`;
+
+          previewDiv.innerHTML = `
+            <p><strong>Diet Image:</strong></p>
+            <img src="${URL.createObjectURL(dietFile)}" alt="Diet Preview">
+            <p><strong>Workout Image:</strong></p>
+            <img src="${URL.createObjectURL(workoutFile)}" alt="Workout Preview">
+          `;
+        } else {
+          statusDiv.textContent = `❌ Error: ${result.error || 'Upload failed.'}`;
+        }
+
+      } catch (err) {
+        console.error(err);
+        statusDiv.textContent = "❌ Upload failed. Please try again.";
+      }
+    });
+  </script>
+
+</body>
+</html>
